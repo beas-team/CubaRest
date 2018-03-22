@@ -1,19 +1,16 @@
-﻿using RestSharp;
+﻿using CubaRest.Model;
+using CubaRest.Model.Reflection;
+using CubaRest.Utils;
+using RestSharp;
 using RestSharp.Authenticators;
 using RestSharp.Deserializers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Authentication;
-using System.Text;
-using System.Threading.Tasks;
-using CubaRest.Model;
-using System.Runtime.Serialization;
 using System.Net;
-using CubaRest.Utils;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
-using CubaRest.Model.Reflection;
-using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace CubaRest
 {
