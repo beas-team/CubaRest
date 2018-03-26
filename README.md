@@ -21,15 +21,56 @@ CubaRestApi api = new CubaRestApi(endpoint, basicUsername, basicPassword, userna
 YourEntityType entities = api.ListEntities<YourEntityType>();
 ```
 Normally username and password should not be stored at client side.
+
 Instead of that save refreshToken and initialize CubaRestApi like this:
 ```
 string refreshToken = "b83f472c-b51f-4271-9abb-c37f4ce5a883";
 CubaRestApi api = new CubaRestApi(endpoint, basicUsername, basicPassword, refreshToken);
 ```
-If unauthorized you can create CubaRestApi object without refreshToken and obtain refreshToken later with username and password provided by user
+If unauthorized you can create CubaRestApi object without refreshToken and obtain refreshToken 
+later with username and password provided by user
 ```
 var refreshToken = api.RequestRefreshToken(username, password);
 ```
+
+### Manual client authenification
+If CubaRest has no refreshToken during request, instead of throwing exception immediately it will try to call RequestCredentials() delegate first.
+
+Use it to ask user to enter his username and password. "shouldContinue" parameter determines whether request should be continued normally or cancelled.
+
+Please note that call from CubaRest comes in syncronious mode. RequestCredentials() should pause current thread until username and password 
+are provided by user. You can use tecnique based on TaskCompletionSource for that:
+```
+using System.Threading.Tasks;
+
+api.RequestCredentials = MyUIClass.RequestCredentials;
+
+private (string, string, bool) MyUIClass.RequestCredentials(CubaRestApi.RequestCredentialsReason reason,
+                                                            string usernameCached = null,
+                                                            string passwordCached = null)
+{
+    string message = null;
+    switch(reason)
+    {
+        case CubaRestApi.RequestCredentialsReason.IncorrectCredentials:
+            message = "Incorrect password"; break;
+    }
+
+    return Task.Run(() =>
+    {
+        var tcs = new TaskCompletionSource<(string, string, bool)>();
+
+        RunOnUiThread(() => {
+			var dialog = new MyAuthDialog() { ErrorMessage = message, Username = usernameCached, Password = passwordCached };
+			dialog.Closed += (username, password, shouldContinue) => { tcs.SetResult((username, password, shouldContinue)); };
+			dialog.Show();
+        });
+
+        return tcs.Task;
+    }).Result;
+}   
+```
+
 
 ### List entities of specific type
 ```
@@ -66,6 +107,7 @@ EnumType enumMeta = api.GetEnumMetadata(enumName);
 * Each entity field should be annotated with Description attribute, which value corresponds to property name in Cuba's metadata.
 
 Description attribute values can then be used in client application UI.
+
 Comments are mostly for additional convenience with IntelliSense
 ```
 public class Sys {
@@ -108,7 +150,7 @@ public class Sys {
 ```
 
 ## Codegeneration and tests
-[CubaRest.Codegenerator](https://github.com/beas-team/CubaRest.Codegenerator) can help you in creating projet-specific client-side entities model.
+[CubaRest.Codegenerator](https://github.com/beas-team/CubaRest.Codegenerator) can help you in creating project-specific client-side entities model.
 
 Tests can be found in separate repository: [CubaRest.Tests](https://github.com/beas-team/CubaRest.Tests)
 Use them to compare project-specific Cuba entities model with your client-side entities model as well.

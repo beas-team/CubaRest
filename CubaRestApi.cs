@@ -27,6 +27,28 @@ namespace CubaRest
         protected string accessToken = null;
         public string RefreshToken { get; set; } = null;
 
+
+        /// <summary>
+        /// Делегат запроса логина и пароля у пользователя
+        /// </summary>
+        /// <param name="reason">Причина запроса: неправильный логин/пароль в предыдущую попытку аутентификации, недоступность сервера и т.п.</param>
+        /// <param name="usernameCached">Логин, полученный через этот же метод в предыдущую попытку аутентификации</param>
+        /// <param name="passwordCached">Пароль, полученный через этот же метод в предыдущую попытку аутентификации</param>
+        /// <returns>
+        /// (username, password, shouldContinue), где
+        /// username и password - введённые пользователем логин и пароль
+        /// shouldContinue - признак,  нужно ли пытаться продолжать исполнить запрос или следует его прервать
+        /// </returns>
+        public delegate (string, string, bool) RequestCredentialsDelegate(RequestCredentialsReason reason = RequestCredentialsReason.Empty,
+                                                                    string usernameCached = null,
+                                                                    string passwordCached = null);
+        public RequestCredentialsDelegate RequestCredentials { get; set; }
+        public enum RequestCredentialsReason
+        {
+            Empty = 0,
+            IncorrectCredentials,
+        }
+
         #region Конструкторы
         /// <summary>
         /// Создание объекта API на основе endpoint и логина/парола базовой аутентификации
@@ -264,10 +286,39 @@ namespace CubaRest
         protected T ProceedAuthorizedRequest<T>(string resource, Method method = Method.GET, Dictionary<string, string> parameters = null)
         {
             Exception innerException = null;
+            var reason = RequestCredentialsReason.Empty;
+            string usernameCached = null;
+            string passwordCached = null;
 
             int attempts;
             for (attempts = 1; attempts <= 5; attempts++)
             {
+                if (RefreshToken == null)
+                {
+                    if (RequestCredentials == null)
+                        throw new NotImplementedException("Requesting connection credentials is not implemented in client code");
+
+                    (var username, var password, var shouldContinue) = RequestCredentials(reason, usernameCached, passwordCached);
+                    usernameCached = username;
+                    passwordCached = password;
+
+                    if (shouldContinue)
+                    {
+                        try
+                        {
+                            RequestRefreshToken(username, password);
+                        }
+                        catch (CubaAccessException ex)
+                        {
+                            innerException = ex;
+                            reason = RequestCredentialsReason.IncorrectCredentials;
+                            continue;
+                        }
+                    }
+                    else
+                        throw new NotImplementedException("Cancelling Cuba request is not implemented yet");
+                }
+
                 if (string.IsNullOrEmpty(accessToken))
                     accessToken = RequestAccessToken(RefreshToken);
 
@@ -329,7 +380,7 @@ namespace CubaRest
         public List<T> ListEntities<T>(EntityListAttributes listAttributes = null) where T : Entity
             => ProceedListEntitiesRequest<List<T>>(GetCubaNameForType<T>(), listAttributes);
 
-        public async void ListEntitiesAsync<T>(Action<List<T>> callback = null, EntityListAttributes listAttributes = null) where T : Entity
+        public async Task ListEntitiesAsync<T>(Action<List<T>> callback = null, EntityListAttributes listAttributes = null) where T : Entity
         {
             var result = await Task.Run(() => ProceedListEntitiesRequest<List<T>>(GetCubaNameForType<T>(), listAttributes));
             callback?.Invoke(result);
