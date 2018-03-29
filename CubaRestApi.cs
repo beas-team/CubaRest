@@ -49,6 +49,9 @@ namespace CubaRest
             IncorrectCredentials,
         }
 
+        public delegate void RefreshTokenUpdatedDelegate(string newRefreshToken);
+        public event RefreshTokenUpdatedDelegate RefreshTokenUpdated;
+
         #region Конструкторы
         /// <summary>
         /// Создание объекта API на основе endpoint и логина/парола базовой аутентификации
@@ -139,6 +142,8 @@ namespace CubaRest
             var token = Execute<Dictionary<string, string>>(request);
             RefreshToken = token.TryGetValue("refresh_token") ?? throw new CubaResponseParsingException("Refresh token is missing in server response");
             accessToken = token.TryGetValue("access_token");
+
+            RefreshTokenUpdated?.Invoke(RefreshToken);
 
             return RefreshToken;
         }
@@ -370,6 +375,17 @@ namespace CubaRest
 
 
         #region Получение списка сущностей
+
+        // (спорно)
+        //public List<T> ListEntities<T>(params KeyValuePair<string, string>[] args) where T : Entity
+        //{
+        //    var type = GetCubaNameForType<T>();
+        //    var dic = new Dictionary<string, string>(args.ToDictionary(x => x.Key, x => x.Value));
+        //    return ProceedAuthorizedRequest<List<T>>($"entities/{type}", parameters: dic);            
+        //}
+           
+
+
         /// <summary>
         /// Получение списка сущностей с преобразованием сразу в List нужного типа
         /// </summary>
@@ -410,7 +426,7 @@ namespace CubaRest
         protected T ProceedListEntitiesRequest<T>(string type, EntityListAttributes listAttributes = null)
         {
             ValidateMetaclassNameFormat(type);
-            return ProceedAuthorizedRequest<T>($"entities/{type}", parameters: listAttributes);            
+            return ProceedAuthorizedRequest<T>($"entities/{type}", parameters: listAttributes);
         }
         #endregion
 
