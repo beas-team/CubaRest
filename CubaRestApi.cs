@@ -222,6 +222,15 @@ namespace CubaRest
                     switch(error.TryGetValue("error"))
                     {
                         case "invalid_grant":   /// Ошибка HTTP Basic аутентификации в процессе запроса токена доступа
+                            if (request.Parameters.Any(x => x.Name == "grant_type" && x.Value.ToString() == "refresh_token"))
+                                throw new CubaRefreshTokenExpiredException(message: error.TryGetValue("error_description", defaultValue: response.Content),
+                                                inner: response.ErrorException,
+                                                code: response.StatusCode);
+                            else
+                                throw new CubaAccessException(message: error.TryGetValue("error_description", defaultValue: response.Content),
+                                                inner: response.ErrorException,
+                                                code: response.StatusCode);
+
                         case "unauthorized":    /// В заголовках запроса отсутствует корректный токен доступа в виде поля "Authentication" => "Bearer (тут токен)"
                             throw new CubaAccessException(message: error.TryGetValue("error_description", defaultValue: response.Content),
                                                 inner: response.ErrorException,
@@ -240,6 +249,7 @@ namespace CubaRest
 
                         // TODO: Понять, какие ещё возможны варианты возврата ошибок. 
 
+                        case "Server error":
                         case "server_error":    /// 1. При запросе токена доступа передано пустое поле пароля
                                                 /// 2. Could not access HTTP invoker remote service at [cuba_AuthenticationService]; nested exception is java.io.IOException: Did not receive successful HTTP response: status code = 404, status message = [null]
 
@@ -288,7 +298,7 @@ namespace CubaRest
         /// <returns></returns>
         /// <exception cref="CubaInvalidConnectionParametersException">RefreshToken пуст</exception>
         /// <exception cref="CubaException">Все те же самые исключения, что и у Execute()</exception>
-        protected T ProceedAuthorizedRequest<T>(string resource, Method method = Method.GET, Dictionary<string, string> parameters = null)
+        protected T ProceedAuthorizedRequest<T>(string resource, Method method = Method.GET, Dictionary<string, string> parameters = null, object bodyObject = null)
         {
             Exception innerException = null;
             var reason = RequestCredentialsReason.Empty;
@@ -296,7 +306,7 @@ namespace CubaRest
             string passwordCached = null;
 
             int attempts;
-            for (attempts = 1; attempts <= 5; attempts++)
+            for (attempts = 0; attempts < 5; attempts++)
             {
                 if (RefreshToken == null)
                 {
@@ -324,11 +334,12 @@ namespace CubaRest
                         throw new NotImplementedException("Cancelling Cuba request is not implemented yet");
                 }
 
-                if (string.IsNullOrEmpty(accessToken))
-                    accessToken = RequestAccessToken(RefreshToken);
-
                 try
                 {
+                    if (string.IsNullOrEmpty(accessToken))
+                        accessToken = RequestAccessToken(RefreshToken);
+
+
                     var request = new RestRequest(resource, method);
                     request.AddHeader("Authorization", $"Bearer {accessToken}");
 
@@ -336,11 +347,24 @@ namespace CubaRest
                         foreach (var pair in parameters)
                             request.AddParameter(pair.Key, pair.Value);
 
+                    if (bodyObject != null)
+                    {
+                        //request.RequestFormat = DataFormat.Json;
+                        //request.AddBody(SimpleJson.SimpleJson.SerializeObject(bodyObject));
+                        request.AddJsonBody(bodyObject);
+                    }
+
                     return Execute<T>(request);
                 }
-                catch (CubaAccessTokenExpiredException ex) // В процессе запроса была выдана ошибка экспирации токена, так что после обновления токена запрос будет повторён
+                catch (CubaAccessTokenExpiredException ex) // В процессе запроса была выдана ошибка экспирации access токена, так что после обновления токена запрос будет повторён
                 {
                     innerException = ex;
+                    accessToken = null;
+                }
+                catch (CubaRefreshTokenExpiredException ex) // В процессе запроса была выдана ошибка экспирации refresh токена, так что после обновления токена запрос будет повторён
+                {
+                    innerException = ex;
+                    RefreshToken = null;
                     accessToken = null;
                 }
                 catch (CubaConnectionException ex)
@@ -358,6 +382,7 @@ namespace CubaRest
         /// </summary>
         /// <returns>Свежее значение accessToken</returns>
         /// <exception cref="CubaInvalidConnectionParametersException"></exception>
+        /// <exception cref="CubaException">Все те же самые исключения, что и у Execute()</exception>
         protected string RequestAccessToken(string refreshToken)
         {
             if (string.IsNullOrEmpty(refreshToken))
@@ -396,11 +421,8 @@ namespace CubaRest
         public List<T> ListEntities<T>(EntityListAttributes listAttributes = null) where T : Entity
             => ProceedListEntitiesRequest<List<T>>(GetCubaNameForType<T>(), listAttributes);
 
-        public async Task ListEntitiesAsync<T>(Action<List<T>> callback = null, EntityListAttributes listAttributes = null) where T : Entity
-        {
-            var result = await Task.Run(() => ProceedListEntitiesRequest<List<T>>(GetCubaNameForType<T>(), listAttributes));
-            callback?.Invoke(result);
-        }
+        public async Task<List<T>> ListEntitiesAsync<T>(EntityListAttributes listAttributes = null) where T : Entity
+            => await Task.Run(() => ProceedListEntitiesRequest<List<T>>(GetCubaNameForType<T>(), listAttributes));
 
         /// <summary>
         /// Получение списка сущностей с выводом в List<Dictionary<string, string>>
@@ -431,6 +453,29 @@ namespace CubaRest
         #endregion
 
 
+        #region Queries
+        public async Task<List<T>> QueryAsync<T>(string queryName, Action<List<T>> callback = null)
+        {
+            var type = GetCubaNameForType<T>();
+            var result = await Task.Run(() => ProceedAuthorizedRequest<List<T>>($"queries/{type}/{queryName}"));
+            callback?.Invoke(result);
+            return result;
+        }
+        #endregion
+
+        #region Services
+        public T ExecuteService<T>(string service, string method, object bodyObject = null)
+            => ProceedAuthorizedRequest<T>($"services/{service}/{method}", Method.POST, null, bodyObject);
+
+        public async Task<T> ExecuteServiceAsync<T>(string service, string method, object bodyObject = null, Action<T> callback = null)
+        {
+            var result = await Task.Run(() => ProceedAuthorizedRequest<T>($"services/{service}/{method}", Method.POST, null, bodyObject));
+            callback?.Invoke(result);
+            return result;
+        }
+        #endregion
+
+
         #region Получение экземляра сущности
         /// <summary>
         /// Получение экземляра сущности с преобразованием в целевой тип
@@ -443,6 +488,22 @@ namespace CubaRest
         /// <exception cref="CubaException">Все те же самые исключения, что и у Execute()</exception>
         public T GetEntity<T>(string id, string view = null) where T : Entity
             => ProceedGetEntityRequest<T>(GetCubaNameForType<T>(), id, view);
+
+        /// <summary>
+        /// Получение экземляра сущности с преобразованием в целевой тип, асинхронная версия
+        /// </summary>
+        /// <typeparam name="T">Тип данных сущности</typeparam>
+        /// <param name="id">Id сущности</param>
+        /// <param name="view">Представление ответа</param>
+        /// <returns>Экземпляр сущности</returns>
+        /// <exception cref="CubaInvalidFormatException">Выбрасывается, если T не может быть преобразован к названию типа данных REST API или id не соответствует формату UUID</exception>
+        /// <exception cref="CubaException">Все те же самые исключения, что и у Execute()</exception>
+        public async Task<T> GetEntityAsync<T>(string id, string view = null, Action<T> callback = null) where T : Entity
+        {
+            var result = await Task.Run(() => ProceedGetEntityRequest<T>(GetCubaNameForType<T>(), id, view));
+            callback?.Invoke(result);
+            return result;
+        }
 
         /// <summary>
         /// Получение экземляра сущности с преобразованием в Dictionary<string, string>
@@ -535,6 +596,13 @@ namespace CubaRest
         {
             var response = ProceedAuthorizedRequest<List<Dictionary<string, string>>>($"metadata/datatypes", method: Method.GET);
             return new List<string>(response.Select(x => x.TryGetValue("id")));
+        }
+
+        public List<EntityView> ListEntityViews(string cubaType)
+        {
+            ValidateMetaclassNameFormat(cubaType);
+            var result = ProceedAuthorizedRequest<List<EntityView>>($"metadata/entities/{cubaType}/views", method: Method.GET);
+            return result;
         }
         #endregion
 

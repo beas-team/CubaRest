@@ -112,6 +112,14 @@ namespace CubaRest
     {
         public CubaAccessTokenExpiredException(string message, Exception inner, HttpStatusCode code) : base(message, inner, code) { }
     }
+    
+    /// <summary>
+    /// Требуется обновление токена refreshToken
+    /// </summary>
+    public class CubaRefreshTokenExpiredException : CubaAccessException
+    {
+        public CubaRefreshTokenExpiredException(string message, Exception inner, HttpStatusCode code) : base(message, inner, code) { }
+    }
 
     /// <summary>
     /// Тип запрошеной сущности отсутствует в структуре данных сервера
