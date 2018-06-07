@@ -41,11 +41,13 @@ namespace CubaRest
         /// </returns>
         public delegate (string, string, bool) RequestCredentialsDelegate(RequestCredentialsReason reason = RequestCredentialsReason.Empty,
                                                                     string usernameCached = null,
-                                                                    string passwordCached = null);
+                                                                    string passwordCached = null,
+                                                                    string errorDetails = null);
         public RequestCredentialsDelegate RequestCredentials { get; set; }
         public enum RequestCredentialsReason
         {
             Empty = 0,
+            ServerError,
             IncorrectCredentials,
         }
 
@@ -313,7 +315,7 @@ namespace CubaRest
                     if (RequestCredentials == null)
                         throw new NotImplementedException("Requesting connection credentials is not implemented in client code");
 
-                    (var username, var password, var shouldContinue) = RequestCredentials(reason, usernameCached, passwordCached);
+                    (var username, var password, var shouldContinue) = RequestCredentials(reason, usernameCached, passwordCached, innerException?.Message);
                     usernameCached = username;
                     passwordCached = password;
 
@@ -327,6 +329,12 @@ namespace CubaRest
                         {
                             innerException = ex;
                             reason = RequestCredentialsReason.IncorrectCredentials;
+                            continue;
+                        }
+                        catch (CubaResponseException ex)
+                        {
+                            innerException = ex;
+                            reason = RequestCredentialsReason.ServerError;
                             continue;
                         }
                     }
@@ -457,6 +465,11 @@ namespace CubaRest
         public async Task<List<T>> QueryAsync<T>(string queryName, Action<List<T>> callback = null)
         {
             var type = GetCubaNameForType<T>();
+            return await QueryAsync(type, queryName, callback);
+        }
+
+        public async Task<List<T>> QueryAsync<T>(string type, string queryName, Action<List<T>> callback = null)
+        {
             var result = await Task.Run(() => ProceedAuthorizedRequest<List<T>>($"queries/{type}/{queryName}"));
             callback?.Invoke(result);
             return result;

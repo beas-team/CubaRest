@@ -62,28 +62,5 @@ namespace CubaRest.Model
     /// </summary>
     [AttributeUsage(AttributeTargets.Property)]
     public class TransientAttribute : CubaPropertyRestrictionBase { }
-    #endregion
-
-
-    #region Атрибут Description
-    public static class DescriptionAttributeExtension
-    {
-        /// <summary>
-        /// Вспомогательный метод, получающий для значения перечисления значение Description из привязанного атрибута DescriptionAttribute
-        /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static string GetDescription(this Enum value)
-        {
-            FieldInfo fieldInfo = value.GetType().GetField(value.ToString());
-            if (fieldInfo == null)
-                return null;
-
-            var attribute = fieldInfo.GetCustomAttribute(typeof(DescriptionAttribute)) as DescriptionAttribute;
-            return attribute?.Description;
-        }
-
-        // TODO: Сделать метод, который для произвольного типа будет вытаскивать описание из его атрибута Description
-    }
-    #endregion
+    #endregion    
 }
