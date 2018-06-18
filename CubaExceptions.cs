@@ -35,6 +35,15 @@ namespace CubaRest
     }
 
     /// <summary>
+    /// Выбрасывается при отмене запроса к серверу, обычно при вмешательстве пользователя
+    /// </summary>
+    public class CubaRequestAbortedException : CubaException
+    {
+        public CubaRequestAbortedException(string message, Exception inner = null)
+                             : base(message, inner) { }
+    }
+
+    /// <summary>
     /// Выбрасывается при обнаружении несоответствия содержимого переменной назначенному формату
     /// </summary>
     public class CubaInvalidFormatException : CubaException

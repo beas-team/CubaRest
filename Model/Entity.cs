@@ -16,6 +16,7 @@ namespace CubaRest.Model
     {
         public string _entityName { get; set; }
         public string _instanceName { get; set; }
+        public string __securityToken { get; set; }
 
         public override string ToString() => _instanceName;
     }

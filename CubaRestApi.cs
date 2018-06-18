@@ -80,7 +80,7 @@ namespace CubaRest
             }
             catch (Exception ex)
             {
-                throw new CubaNotImplementedException("Error of unsupported type while creating API connection", ex);
+                throw new CubaInvalidConnectionParametersException("Error of unsupported type while creating API connection", ex);
             }
         }
 
@@ -175,7 +175,7 @@ namespace CubaRest
                 response = client.Execute(request);
 
                 if (response.IsSuccessful)
-                {                   
+                {
                     return deserializer.Deserialize<T>(response);
                 }
                 else
@@ -264,28 +264,28 @@ namespace CubaRest
                     }
                 }
             }
-            catch (SerializationException ex) // Ошибка разбора JSON. Возникает, когда сервер ответил не в JSON. Вылезает в Deserialize()
+            catch (SerializationException ex1) // Ошибка разбора JSON. Возникает, когда сервер ответил не в JSON. Вылезает в Deserialize()
             {
                 throw new CubaDeserializationException(message: "Response can not be parsed as JSON",
-                                        inner: ex,
+                                        inner: ex1,
                                         code: response?.StatusCode ?? HttpStatusCode.OK);
             }
-            catch (FormatException ex) // Ошибка приведения успешно разобранного JSON к запрошенной структуре данных. 
+            catch (FormatException ex2) // Ошибка приведения успешно разобранного JSON к запрошенной структуре данных. 
             {
                 throw new CubaDeserializationException(message: "Error matching data structure to valid JSON response",
-                                        inner: ex,
+                                        inner: ex2,
                                         code: response?.StatusCode ?? HttpStatusCode.OK);
             }
-            catch (InvalidCastException ex) // Ошибка преобразования типа из JSON ответа сервера в объект
+            catch (InvalidCastException ex3) // Ошибка преобразования типа из JSON ответа сервера в объект
             {
                 throw new CubaDeserializationException(message: "Response can not be cast to target object type",
-                                        inner: ex,
+                                        inner: ex3,
                                         code: response?.StatusCode ?? HttpStatusCode.OK);
             }
-            catch (Exception ex) when (!(ex is CubaException)) // when нужен, т.к. внутри уже выбрасываем CubaNotImplementedException
+            catch (Exception ex4) when (!(ex4 is CubaException)) // when нужен, т.к. внутри уже выбрасываем CubaNotImplementedException
             {
                 throw new CubaNotImplementedException(message: "Unsupported response error",
-                                        inner: ex,
+                                        inner: ex4,
                                         code: response?.StatusCode ?? HttpStatusCode.BadRequest);
             }
         }
@@ -339,7 +339,7 @@ namespace CubaRest
                         }
                     }
                     else
-                        throw new NotImplementedException("Cancelling Cuba request is not implemented yet");
+                        throw new CubaRequestAbortedException("Request was aborted by user");
                 }
 
                 try
@@ -364,22 +364,22 @@ namespace CubaRest
 
                     return Execute<T>(request);
                 }
-                catch (CubaAccessTokenExpiredException ex) // В процессе запроса была выдана ошибка экспирации access токена, так что после обновления токена запрос будет повторён
+                catch (CubaAccessTokenExpiredException ex1) // В процессе запроса была выдана ошибка экспирации access токена, так что после обновления токена запрос будет повторён
                 {
-                    innerException = ex;
+                    innerException = ex1;
                     accessToken = null;
                 }
-                catch (CubaRefreshTokenExpiredException ex) // В процессе запроса была выдана ошибка экспирации refresh токена, так что после обновления токена запрос будет повторён
+                catch (CubaRefreshTokenExpiredException ex2) // В процессе запроса была выдана ошибка экспирации refresh токена, так что после обновления токена запрос будет повторён
                 {
-                    innerException = ex;
+                    innerException = ex2;
                     RefreshToken = null;
                     accessToken = null;
                 }
-                catch (CubaConnectionException ex)
+                catch (CubaConnectionException ex3)
                 {
-                    innerException = ex;
+                    innerException = ex3;
                     // В случае проблем со связью также делаем несколько попыток выполнения запроса
-                }
+                }                
             }
 
             throw new CubaAccessException($"Failed to get correct access token after {attempts} attempt(s)", innerException, HttpStatusCode.BadRequest);
